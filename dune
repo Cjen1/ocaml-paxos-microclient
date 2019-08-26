@@ -1,6 +1,11 @@
 (executable
  (name microclient)
- (libraries core lwt unix lwt_ppx zmq-lwt lib message_pb_api)
+ (libraries core lwt unix lwt_ppx zmq-lwt ocaml-paxos ocaml-protoc)
  (preprocess (pps ppx_jane lwt_ppx))
  )
 
+(rule
+ (targets message_pb.ml message_pb.mli message_types.ml message_types.mli)
+ (deps message.proto)
+ (action (bash "ocaml-protoc -binary -ml_out . message.proto"))
+ )
