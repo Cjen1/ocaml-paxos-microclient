@@ -1,5 +1,4 @@
 open Zmq_lwt
-open Message_pb_api
 open Core
 
 open Lib
@@ -64,13 +63,15 @@ let rec main_loop socket client encoder  clientid =
       main_loop socket client encoder clientid
   | None -> Lwt.return_unit
 
-let run_client host port uris op_path client_id =
-  let log_directory = "client-" ^ host ^ "-" ^ (string_of_int port) in
+let client_port = 2382
+
+let run_client host uris op_path client_id =
+  let log_directory = "client-" ^ host ^ "-" ^ (string_of_int client_port) in
   let client_id = conv_exn Int32.of_int client_id in
   Lwt_main.run begin
     let%lwt () = Logger.initialize_default log_directory in
-    let%lwt () = Lwt_io.printl "Spinning up client" in
-    let%lwt client = Client.new_client host port uris in
+    let%lwt () = Lwt_io.printl "Client: Spinning up" in
+    let%lwt client = Client.new_client host client_port uris in
     let%lwt socket = start_zmq_socket op_path in
     let%lwt () = Socket.send socket "" in
     let encoder = Pbrt.Encoder.create () in
@@ -82,21 +83,16 @@ let command =
     ~summary:"microclient for OCaml Paxos"
     Command.Let_syntax.(
       let%map_open
-            host_string = flag "--host"     (required string) ~doc:""
-        and port        = flag "--port"     (required int   ) ~doc:""
-        and config_path = flag "--config"   (required string) ~doc:""
-        and op_path     = flag "--op-path"  (required string) ~doc:""
-        and client_id   = flag "--clientid" (required int   ) ~doc:""
+            endpoints   = anon ("endpoints" %: string)
+        and my_ip       = anon ("my_ip"     %: string)
+        and client_id   = anon ("client_id" %: int)
+        and op_path     = anon ("op_path"   %: string)
       in fun () ->
-        let config = try Config.read_settings config_path
-          with _ -> raise (Invalid_argument "Malformed path / JSON file")
-        in
-        let replica_uris = List.map config.replica_addrs 
-          ~f:(fun (host,port) -> Lib.Message.uri_from_address host port) 
+        let replica_uris = List.map (assert false) 
+          ~f:(fun host -> Lib.Message.uri_from_address host 2381)
         in
         run_client
-          host_string
-          port
+          my_ip 
           replica_uris
           op_path
           client_id
