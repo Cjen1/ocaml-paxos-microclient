@@ -12,8 +12,10 @@ let start_zmq_socket op_path =
   Socket.of_socket socket
   )
 
-let recv_op socket =
+let recv_op socket = 
+  let%lwt () = Lwt_io.printl "Client: Waiting to receive op" in
   let%lwt payload = Socket.recv socket in
+  let%lwt () = Lwt_io.printl "Client: Received op" in
   Lwt.return (Message_pb.decode_operation (Pbrt.Decoder.of_bytes (Bytes.of_string payload)))
 
 let conv_exn f x = match f x with
@@ -25,6 +27,7 @@ let do_put ({key; value;_}:Message_types.operation_op_put) client =
   let st = Unix.gettimeofday() in 
   let%lwt () = Client.send_request_message client cmd in
   let et = Unix.gettimeofday() in
+  let%lwt () = Lwt_io.printl "Client: Put sucessful" in
   Lwt.return (st, et, "Write", "")
   
 let do_get ({key;_}:Message_types.operation_op_get) client = 
@@ -32,6 +35,7 @@ let do_get ({key;_}:Message_types.operation_op_get) client =
   let st = Unix.gettimeofday() in 
   let%lwt () = Client.send_request_message client cmd in
   let et = Unix.gettimeofday() in
+  let%lwt () = Lwt_io.printl "Client: Get sucessful" in
   Lwt.return (st, et, "Read", "")
 
 let rec main_loop socket client encoder  clientid =
@@ -65,8 +69,8 @@ let rec main_loop socket client encoder  clientid =
 
 let client_port = 2382
 
-let run_client host uris op_path client_id =
-  let log_directory = "client-" ^ host ^ "-" ^ (string_of_int client_port) in
+let run_client uris op_path client_id log_directory=
+  let host = "127.0.0.1" in
   let client_id = conv_exn Int32.of_int client_id in
   Lwt_main.run begin
     let%lwt () = Logger.initialize_default log_directory in
@@ -84,18 +88,19 @@ let command =
     Command.Let_syntax.(
       let%map_open
             endpoints   = anon ("endpoints" %: string)
-        and my_ip       = anon ("my_ip"     %: string)
         and client_id   = anon ("client_id" %: int)
         and op_path     = anon ("op_path"   %: string)
+        and log_path    = anon ("logpath"   %: string)
       in fun () ->
-        let replica_uris = List.map (assert false) 
+        let ips = String.split endpoints ~on:',' in
+        let replica_uris = List.map ips 
           ~f:(fun host -> Lib.Message.uri_from_address host 2381)
         in
         run_client
-          my_ip 
           replica_uris
           op_path
           client_id
+          log_path
     )
 
 let () = Command.run command
