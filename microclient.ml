@@ -1,9 +1,7 @@
 open Zmq_lwt
-open Message_pb_api
 open Core
 
 open Lib
-open Log
 
 let start_zmq_socket op_path = 
   Lwt.return (
@@ -22,16 +20,17 @@ let conv_exn f x = match f x with
   | None -> assert false
 
 let do_put ({key; value;_}:Message_types.operation_op_put) client =
-  let cmd = Types.Create (conv_exn Int64.to_int key, Bytes.to_string value) in
+  let key = Int64.to_string key in
+  let value = Bytes.to_string value in
   let st = Unix.gettimeofday() in 
-  let%lwt () = Client.send_request_message client cmd in
+  let%lwt _ = Client.C_Lwt.op_create client key value in
   let et = Unix.gettimeofday() in
   Lwt.return (st, et, "Write", "")
   
 let do_get ({key;_}:Message_types.operation_op_get) client = 
-  let cmd = Types.Read (conv_exn Int64.to_int key) in
+  let key = Int64.to_string key in
   let st = Unix.gettimeofday() in 
-  let%lwt () = Client.send_request_message client cmd in
+  let%lwt _ = Client.C_Lwt.op_read client key in
   let et = Unix.gettimeofday() in
   Lwt.return (st, et, "Read", "")
 
@@ -64,13 +63,11 @@ let rec main_loop socket client encoder  clientid =
       main_loop socket client encoder clientid
   | None -> Lwt.return_unit
 
-let run_client host port uris op_path client_id =
-  let log_directory = "client-" ^ host ^ "-" ^ (string_of_int port) in
+let run_client uris op_path client_id =
   let client_id = conv_exn Int32.of_int client_id in
   Lwt_main.run begin
-    let%lwt () = Logger.initialize_default log_directory in
     let%lwt () = Lwt_io.printl "Spinning up client" in
-    let%lwt client = Client.new_client host port uris in
+    let client = Client.new_client uris in
     let%lwt socket = start_zmq_socket op_path in
     let%lwt () = Socket.send socket "" in
     let encoder = Pbrt.Encoder.create () in
@@ -82,24 +79,11 @@ let command =
     ~summary:"microclient for OCaml Paxos"
     Command.Let_syntax.(
       let%map_open
-            host_string = flag "--host"     (required string) ~doc:""
-        and port        = flag "--port"     (required int   ) ~doc:""
-        and config_path = flag "--config"   (required string) ~doc:""
-        and op_path     = flag "--op-path"  (required string) ~doc:""
-        and client_id   = flag "--clientid" (required int   ) ~doc:""
+          endpoints = anon ("endpoints" %: string)
+      and op_path = anon ("op_path" %: string)
+      and client_id = anon ("id" %: int)
       in fun () ->
-        let config = try Config.read_settings config_path
-          with _ -> raise (Invalid_argument "Malformed path / JSON file")
-        in
-        let replica_uris = List.map config.replica_addrs 
-          ~f:(fun (host,port) -> Lib.Message.uri_from_address host port) 
-        in
-        run_client
-          host_string
-          port
-          replica_uris
-          op_path
-          client_id
+        run_client endpoints op_path client_id
     )
 
 let () = Command.run command
