@@ -11,8 +11,10 @@ let start_zmq_socket op_path =
   Socket.of_socket socket
   )
 
-let recv_op socket =
+let recv_op socket = 
+  let%lwt () = Lwt_io.printl "Client: Waiting to receive op" in
   let%lwt payload = Socket.recv socket in
+  let%lwt () = Lwt_io.printl "Client: Received op" in
   Lwt.return (Message_pb.decode_operation (Pbrt.Decoder.of_bytes (Bytes.of_string payload)))
 
 let conv_exn f x = match f x with
@@ -25,6 +27,7 @@ let do_put ({key; value;_}:Message_types.operation_op_put) client =
   let st = Unix.gettimeofday() in 
   let%lwt _ = Client.C_Lwt.op_create client key value in
   let et = Unix.gettimeofday() in
+  let%lwt () = Lwt_io.printl "Client: Put sucessful" in
   Lwt.return (st, et, "Write", "")
   
 let do_get ({key;_}:Message_types.operation_op_get) client = 
@@ -32,6 +35,7 @@ let do_get ({key;_}:Message_types.operation_op_get) client =
   let st = Unix.gettimeofday() in 
   let%lwt _ = Client.C_Lwt.op_read client key in
   let et = Unix.gettimeofday() in
+  let%lwt () = Lwt_io.printl "Client: Get sucessful" in
   Lwt.return (st, et, "Read", "")
 
 let rec main_loop socket client encoder  clientid =
